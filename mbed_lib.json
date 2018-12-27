@@ -1,0 +1,10 @@
+{
+    "name": "MBED_NFC_NT3H2111",
+    "config": {        
+        "nfceeprom": {
+            "macro_name": "MBED_CONF_NFCEEPROM",
+            "value": true,
+            "help": "Device supports NFC EEPROM"
+        }
+    }
+}
