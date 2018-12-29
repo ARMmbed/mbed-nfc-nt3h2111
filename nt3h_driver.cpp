@@ -45,7 +45,7 @@ bool NTAG_ReadBlock(NTAG_HANDLE_T ntag, uint8_t block, uint8_t *bytes, uint8_t l
     ntag->tx_buffer[TX_START] = block;
 
     /* send block number */
-    ntag->i2cbus->write(ntag->address, (const char*)ntag->tx_buffer, 1);
+    ntag->i2cbus->write(ntag->address<<1, (const char*)ntag->tx_buffer, 1);
 
     /*if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, 1))
     {
@@ -54,7 +54,7 @@ bool NTAG_ReadBlock(NTAG_HANDLE_T ntag, uint8_t block, uint8_t *bytes, uint8_t l
     }*/
 
     /* receive bytes */
-    ntag->i2cbus->read(ntag->address, (char*)ntag->rx_buffer, NTAG_I2C_BLOCK_SIZE);
+    ntag->i2cbus->read(ntag->address<<1, (char*)ntag->rx_buffer, NTAG_I2C_BLOCK_SIZE);
 
     /*if (HAL_I2C_OK != HAL_I2C_RecvBytes(ntag->i2cbus, ntag->address, ntag->rx_buffer, NTAG_I2C_BLOCK_SIZE))
     {
@@ -91,7 +91,7 @@ bool NTAG_WriteBlock(NTAG_HANDLE_T ntag, uint8_t block, const uint8_t *bytes, ui
         ntag->tx_buffer[TX_START + i + 1] = 0;
 
     /* send block number */
-    ntag->i2cbus->write(ntag->address, (const char*)ntag->tx_buffer, NTAG_I2C_BLOCK_SIZE + 1);
+    ntag->i2cbus->write(ntag->address<<1, (const char*)ntag->tx_buffer, NTAG_I2C_BLOCK_SIZE + 1);
 
     /*
     if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, NTAG_I2C_BLOCK_SIZE + 1))
@@ -106,7 +106,7 @@ bool NTAG_WriteBlock(NTAG_HANDLE_T ntag, uint8_t block, const uint8_t *bytes, ui
 
     /* wait for completion */
     do {
-        wait(5);
+        wait_ms(5);
         if (NTAG_ReadRegister(ntag, NTAG_MEM_OFFSET_NS_REG, &ns_reg))
             break;
         timeout--;
@@ -208,7 +208,7 @@ static bool NTAG_ReadRegister(NTAG_HANDLE_T ntag, uint8_t reg, uint8_t *val)
     ntag->tx_buffer[TX_START + 1] = reg;
 
     // send block number
-    ntag->i2cbus->write(ntag->address, (const char*)ntag->tx_buffer, 2);
+    ntag->i2cbus->write(ntag->address<<1, (const char*)ntag->tx_buffer, 2);
 
     /*if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, 2))
     {
@@ -217,7 +217,7 @@ static bool NTAG_ReadRegister(NTAG_HANDLE_T ntag, uint8_t reg, uint8_t *val)
     }*/
 
     // receive bytes
-    ntag->i2cbus->read(ntag->address, (char*)ntag->rx_buffer, 1);
+    ntag->i2cbus->read(ntag->address<<1, (char*)ntag->rx_buffer, 1);
 
     /*
     if (HAL_I2C_OK != HAL_I2C_RecvBytes(ntag->i2cbus, ntag->address, ntag->rx_buffer, 1))
@@ -239,7 +239,7 @@ static bool NTAG_WriteRegister(NTAG_HANDLE_T ntag, uint8_t reg, uint8_t mask, ui
     ntag->tx_buffer[TX_START + 2] = mask;
     ntag->tx_buffer[TX_START + 3] = val;
 
-    ntag->i2cbus->write(ntag->address,(const char*) ntag->tx_buffer, 4);
+    ntag->i2cbus->write(ntag->address<<1,(const char*) ntag->tx_buffer, 4);
 
     /*
         if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, 4))
@@ -312,7 +312,7 @@ void NT3HDriver:: factory_reset_Tag(void)
     printf("\r\nFactory Reset of Tag memory");
     //SwitchLEDs(REDLED);
     //HAL_Timer_delay_ms(100);
-    wait(100);
+    wait_ms(100);
 
     /* reset default eeprom memory values (smart poster) */
     NTAG_WriteBytes(_ntag_handle, NTAG_MEM_ADRR_I2C_ADDRESS, Default_BeginingOfMemory, Default_BeginingOfMemory_length);
@@ -329,8 +329,8 @@ void NT3HDriver:: factory_reset_Tag(void)
     NTAG_WriteBlock(_ntag_handle, 58, Default_Page_58, NTAG_I2C_BLOCK_SIZE);
 
     //SwitchLEDs(GREENLED);
-    //HAL_Timer_delay_ms(100);
-    wait(100);
+    //HAL_Timer_delay_ms(100);    
+    wait_ms(100);   
 }
 
 
