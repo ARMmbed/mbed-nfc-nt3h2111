@@ -45,7 +45,7 @@ bool NTAG_ReadBlock(NTAG_HANDLE_T ntag, uint8_t block, uint8_t *bytes, uint8_t l
     ntag->tx_buffer[TX_START] = block;
 
     /* send block number */
-    ntag->i2cbus->write(ntag->address<<1, (const char*)ntag->tx_buffer, 1);
+    ntag->i2cbus->write(ntag->waddr, (const char*)ntag->tx_buffer, 1);
 
     /*if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, 1))
     {
@@ -54,7 +54,7 @@ bool NTAG_ReadBlock(NTAG_HANDLE_T ntag, uint8_t block, uint8_t *bytes, uint8_t l
     }*/
 
     /* receive bytes */
-    ntag->i2cbus->read(ntag->address<<1, (char*)ntag->rx_buffer, NTAG_I2C_BLOCK_SIZE);
+    ntag->i2cbus->read(ntag->raddr, (char*)ntag->rx_buffer, NTAG_I2C_BLOCK_SIZE);
 
     /*if (HAL_I2C_OK != HAL_I2C_RecvBytes(ntag->i2cbus, ntag->address, ntag->rx_buffer, NTAG_I2C_BLOCK_SIZE))
     {
@@ -91,7 +91,7 @@ bool NTAG_WriteBlock(NTAG_HANDLE_T ntag, uint8_t block, const uint8_t *bytes, ui
         ntag->tx_buffer[TX_START + i + 1] = 0;
 
     /* send block number */
-    ntag->i2cbus->write(ntag->address<<1, (const char*)ntag->tx_buffer, NTAG_I2C_BLOCK_SIZE + 1);
+    ntag->i2cbus->write(ntag->waddr, (const char*)ntag->tx_buffer, NTAG_I2C_BLOCK_SIZE + 1);
 
     /*
     if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, NTAG_I2C_BLOCK_SIZE + 1))
@@ -180,7 +180,7 @@ static bool NTAG_WriteBytes(NTAG_HANDLE_T ntag, uint16_t address, const uint8_t 
             /* the byte contains part of the serial number on read but   */
             /* on write the I2C address of the device can be modified    */
             if (0x00 == current_block && NTAG_MEM_ADRR_I2C_ADDRESS < begin)
-                ntag->rx_buffer[RX_START + 0] = ntag->address;
+                ntag->rx_buffer[RX_START + 0] = ntag->waddr;
 
             /* modify rx_buffer */
             for (i = 0; i < current_len; i++)
@@ -208,7 +208,7 @@ static bool NTAG_ReadRegister(NTAG_HANDLE_T ntag, uint8_t reg, uint8_t *val)
     ntag->tx_buffer[TX_START + 1] = reg;
 
     // send block number
-    ntag->i2cbus->write(ntag->address<<1, (const char*)ntag->tx_buffer, 2);
+    ntag->i2cbus->write(ntag->waddr, (const char*)ntag->tx_buffer, 2);
 
     /*if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, 2))
     {
@@ -217,7 +217,7 @@ static bool NTAG_ReadRegister(NTAG_HANDLE_T ntag, uint8_t reg, uint8_t *val)
     }*/
 
     // receive bytes
-    ntag->i2cbus->read(ntag->address<<1, (char*)ntag->rx_buffer, 1);
+    ntag->i2cbus->read(ntag->raddr, (char*)ntag->rx_buffer, 1);
 
     /*
     if (HAL_I2C_OK != HAL_I2C_RecvBytes(ntag->i2cbus, ntag->address, ntag->rx_buffer, 1))
@@ -239,7 +239,7 @@ static bool NTAG_WriteRegister(NTAG_HANDLE_T ntag, uint8_t reg, uint8_t mask, ui
     ntag->tx_buffer[TX_START + 2] = mask;
     ntag->tx_buffer[TX_START + 3] = val;
 
-    ntag->i2cbus->write(ntag->address<<1,(const char*) ntag->tx_buffer, 4);
+    ntag->i2cbus->write(ntag->waddr,(const char*) ntag->tx_buffer, 4);
 
     /*
         if (HAL_I2C_OK != HAL_I2C_SendBytes(ntag->i2cbus, ntag->address, ntag->tx_buffer, 4))
@@ -329,8 +329,8 @@ void NT3HDriver:: factory_reset_Tag(void)
     NTAG_WriteBlock(_ntag_handle, 58, Default_Page_58, NTAG_I2C_BLOCK_SIZE);
 
     //SwitchLEDs(GREENLED);
-    //HAL_Timer_delay_ms(100);    
-    wait_ms(100);   
+    //HAL_Timer_delay_ms(100);
+    wait_ms(100);
 }
 
 
@@ -353,16 +353,26 @@ NT3HDriver::NT3HDriver(PinName i2c_data_pin, PinName i2c_clock_pin, PinName fd_p
     //NFC_InitDevice();
     _ntag_device.i2cbus = &_i2c_channel;
     _ntag_device.status = NTAG_OK;
-    _ntag_device.address = NT3H_I2C_BASEADDR;
+    _ntag_device.waddr = NT3H_I2C_WRITE_ADDR;
+	_ntag_device.raddr= NT3H_I2C_READ_ADDR;
     _ntag_handle = &_ntag_device;
-    //_current_eeprom_size = MAX_USER_MEM_SIZE;
-    //_i2c_channel.
+
+	//For NXP I2C Tag.  Page 4 start with Header 0x03 followed by NDEF Message size.
+
+	_ndef_header[0]=NT3H_NDEF_HEADER;
+
+	//For NXP I2C Tag.  There always be 0xfe append to the end of the ndef message as tail.
+	_ndef_tail[0] = NT3H_NDEF_TAIL;
+
+	_user_mem_offset =  NTAG_MEM_ADDR_START_USER_MEMORY;
+
 }
 
 
 void NT3HDriver::reset()
 {
     factory_reset_Tag();
+	_user_mem_offset =  NTAG_MEM_ADDR_START_USER_MEMORY;
 }
 
 
@@ -410,12 +420,18 @@ void NT3HDriver::read_bytes(uint32_t address, uint8_t *bytes, size_t count)
 void NT3HDriver::write_bytes(uint32_t address, const uint8_t *bytes, size_t count)
 {
     bool status;
-    if (address >= _current_eeprom_size) {
+    if (address >= _current_eeprom_size || address + count > _current_eeprom_size ) {
         delegate()->on_bytes_written(0);
         return;
     }
 
-    count = (address + count > MAX_USER_MEM_SIZE) ? (MAX_USER_MEM_SIZE - address) : count;
+	/*printf("%s==>enter:",__FUNCTION__);
+	for(int i=0;i<count;i++)
+	{
+		printf("0x%02x,",bytes[i]);
+	}*/
+
+    //count = (address + count > MAX_USER_MEM_SIZE) ? (MAX_USER_MEM_SIZE - address) : count;
 
     status = NTAG_WriteBytes(_ntag_handle, address + _user_mem_offset, bytes, count);
 
@@ -423,6 +439,12 @@ void NT3HDriver::write_bytes(uint32_t address, const uint8_t *bytes, size_t coun
         printf("Error while write bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
         delegate()->on_bytes_written(0);
     }
+
+	//always append the tail 0xfe.
+	if(address + count == _current_eeprom_size)
+	{
+		NTAG_WriteBytes(_ntag_handle, _current_eeprom_size + _user_mem_offset, _ndef_tail, 1);
+	}
 
     delegate()->on_bytes_written(count);
 }
@@ -434,17 +456,39 @@ void NT3HDriver::read_size()
 
 void NT3HDriver::write_size(size_t count)
 {
+	//printf("%s==>count:%d",__FUNCTION__,count);
     if (count > MAX_USER_MEM_SIZE) {
         delegate()->on_size_written(false);
     } else {
         _current_eeprom_size = count;
+		uint8_t header_size = 0;
+
+		if(count<0xff)
+		{
+			_ndef_header[1] = count;
+			header_size = 2;
+		}
+		else
+		{
+			uint16_t _ndef_size = (uint16_t)count;
+			uint8_t* bytes = (uint8_t*)&_ndef_size;
+			_ndef_header[1] = bytes[0];
+			_ndef_header[2] = bytes[1];
+			header_size = 3;
+		}
+
+		if(NTAG_WriteBytes(_ntag_handle, NTAG_MEM_ADDR_START_USER_MEMORY, _ndef_header, header_size)) {
+	        printf("Error while write bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
+	        delegate()->on_size_written(false);
+	    }
+		_user_mem_offset = NTAG_MEM_ADDR_START_USER_MEMORY + header_size;
+
         delegate()->on_size_written(true);
     }
 }
 
 void NT3HDriver::erase_bytes(uint32_t address, size_t count)
 {
-
     bool status;
     uint16_t bytes_written = 0;
 
@@ -472,7 +516,7 @@ void NT3HDriver::erase_bytes(uint32_t address, size_t count)
             /* the byte contains part of the serial number on read but   */
             /* on write the I2C address of the device can be modified    */
             if (0x00 == current_block && NTAG_MEM_ADRR_I2C_ADDRESS < begin)
-                _ntag_handle->rx_buffer[RX_START + 0] = _ntag_handle->address;
+                _ntag_handle->rx_buffer[RX_START + 0] = _ntag_handle->waddr;
 
             /* modify rx_buffer */
             for (i = 0; i < current_len; i++)

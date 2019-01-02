@@ -99,7 +99,9 @@ private:
     NTAG_DEVICE* _ntag_handle;
 
     int _current_eeprom_size;
-    static const int _user_mem_offset =  NTAG_MEM_ADDR_START_USER_MEMORY;
+    int _user_mem_offset;
+    uint8_t _ndef_header[3];
+    uint8_t _ndef_tail[1];
     bool _session_opened;
 
 

@@ -9,7 +9,12 @@
 #define RX_START 0
 #define NTAG_ADDRESS_SIZE 1
 
-#define NT3H_I2C_BASEADDR   0x55
+#define NT3H_I2C_WRITE_ADDR   0xAA
+#define NT3H_I2C_READ_ADDR   0xAB
+
+#define NT3H_NDEF_HEADER 0x03
+#define NT3H_NDEF_TAIL 0xFE
+
 
 //Fred_Todo:  1k or 2k?
 #define NTAG_1k 1
@@ -73,7 +78,8 @@ typedef enum {
 struct NTAG_DEVICE {
     NTAG_STATUS_T status;
     I2C* i2cbus;
-    uint8_t address;
+    uint8_t waddr;
+    uint8_t raddr;
 #ifdef HAVE_NTAG_INTERRUPT
     ISR_SOURCE_T isr;
 #endif
