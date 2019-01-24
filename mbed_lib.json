@@ -5,6 +5,18 @@
             "macro_name": "MBED_CONF_NFCEEPROM",
             "value": true,
             "help": "Device supports NFC EEPROM"
-        }
+        },
+		"sda": {
+            "help": "",
+            "value": "D14"
+        },
+		"scl": {
+            "help": "",
+            "value": "D15"
+        },
+		"fd": {
+            "help": "",
+            "value": "D5"
+        }	
     }
 }
