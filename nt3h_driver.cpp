@@ -354,17 +354,17 @@ NT3HDriver::NT3HDriver(PinName i2c_data_pin, PinName i2c_clock_pin, PinName fd_p
     _ntag_device.i2cbus = &_i2c_channel;
     _ntag_device.status = NTAG_OK;
     _ntag_device.waddr = NT3H_I2C_WRITE_ADDR;
-	_ntag_device.raddr= NT3H_I2C_READ_ADDR;
+    _ntag_device.raddr= NT3H_I2C_READ_ADDR;
     _ntag_handle = &_ntag_device;
 
-	//For NXP I2C Tag.  Page 4 start with Header 0x03 followed by NDEF Message size.
+    //For NXP I2C Tag.  Page 4 start with Header 0x03 followed by NDEF Message size.
 
-	_ndef_header[0]=NT3H_NDEF_HEADER;
+    _ndef_header[0]=NT3H_NDEF_HEADER;
 
-	//For NXP I2C Tag.  There always be 0xfe append to the end of the ndef message as tail.
-	_ndef_tail[0] = NT3H_NDEF_TAIL;
+    //For NXP I2C Tag.  There always be 0xfe append to the end of the ndef message as tail.
+    _ndef_tail[0] = NT3H_NDEF_TAIL;
 
-	_user_mem_offset =  NTAG_MEM_ADDR_START_USER_MEMORY;
+    _user_mem_offset =  NTAG_MEM_ADDR_START_USER_MEMORY;
 
 }
 
@@ -372,7 +372,7 @@ NT3HDriver::NT3HDriver(PinName i2c_data_pin, PinName i2c_clock_pin, PinName fd_p
 void NT3HDriver::reset()
 {
     factory_reset_Tag();
-	_user_mem_offset =  NTAG_MEM_ADDR_START_USER_MEMORY;
+    _user_mem_offset =  NTAG_MEM_ADDR_START_USER_MEMORY;
 }
 
 
@@ -403,10 +403,23 @@ void NT3HDriver::read_bytes(uint32_t address, uint8_t *bytes, size_t count)
         return;
     }
 
-    count = (address + count > MAX_USER_MEM_SIZE) ? (MAX_USER_MEM_SIZE - address) : count;
+	if(NTAG_ReadBytes(_ntag_handle, NTAG_MEM_ADDR_START_USER_MEMORY, _ndef_header, _user_mem_offset-NTAG_MEM_ADDR_START_USER_MEMORY)) {
+		printf("Error while Read bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
+		delegate()->on_bytes_read(0);
+	}
 
 
-    status = NTAG_WriteBlock(_ntag_handle, address + _user_mem_offset, bytes, count);
+	uint16_t _ndef_size = (uint16_t)_ndef_header[1];
+
+	if(_current_eeprom_size != _ndef_size)
+	{
+		printf("Read Size is different than current size\n");
+	}
+
+    count = (address + count > _current_eeprom_size) ? (_current_eeprom_size - address) : count;
+
+
+    status = NTAG_ReadBytes(_ntag_handle, address + _user_mem_offset, bytes, count);
 
     if(status) {
         printf("Error while Read bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
@@ -420,18 +433,18 @@ void NT3HDriver::read_bytes(uint32_t address, uint8_t *bytes, size_t count)
 void NT3HDriver::write_bytes(uint32_t address, const uint8_t *bytes, size_t count)
 {
     bool status;
-    if (address >= _current_eeprom_size || address + count > _current_eeprom_size ) {
+    if (address >= _current_eeprom_size || address + count > MAX_USER_MEM_SIZE) {
         delegate()->on_bytes_written(0);
         return;
     }
 
-	/*printf("%s==>enter:",__FUNCTION__);
-	for(int i=0;i<count;i++)
-	{
-		printf("0x%02x,",bytes[i]);
-	}*/
+    /*printf("%s==>enter:",__FUNCTION__);
+    for(int i=0;i<count;i++)
+    {
+        printf("0x%02x,",bytes[i]);
+    }*/
 
-    //count = (address + count > MAX_USER_MEM_SIZE) ? (MAX_USER_MEM_SIZE - address) : count;
+    count = (address + count > _current_eeprom_size) ? (_current_eeprom_size - address) : count;
 
     status = NTAG_WriteBytes(_ntag_handle, address + _user_mem_offset, bytes, count);
 
@@ -440,48 +453,89 @@ void NT3HDriver::write_bytes(uint32_t address, const uint8_t *bytes, size_t coun
         delegate()->on_bytes_written(0);
     }
 
-	//always append the tail 0xfe.
-	if(address + count == _current_eeprom_size)
-	{
-		NTAG_WriteBytes(_ntag_handle, _current_eeprom_size + _user_mem_offset, _ndef_tail, 1);
-	}
+    //always append the tail 0xfe.
+    if(address + count == _current_eeprom_size)
+    {
+        NTAG_WriteBytes(_ntag_handle, _current_eeprom_size + _user_mem_offset, _ndef_tail, 1);
+    }
 
     delegate()->on_bytes_written(count);
 }
 
 void NT3HDriver::read_size()
 {
-    delegate()->on_size_read(true, _current_eeprom_size);
+
+	//Try bigger size as default.
+	uint8_t header_size = 3;
+
+    if(NTAG_ReadBytes(_ntag_handle, NTAG_MEM_ADDR_START_USER_MEMORY, _ndef_header, header_size)) {
+        printf("Error while Read bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
+        delegate()->on_size_read(false,0);
+    }
+
+	uint16_t _ndef_size = 0;
+	uint8_t* bytes = (uint8_t*)&_ndef_size;
+	bytes[0] =  _ndef_header[1];
+	bytes[1] =  _ndef_header[2];
+
+	uint8_t tail=0;
+
+	if(NTAG_ReadBytes(_ntag_handle, NTAG_MEM_ADDR_START_USER_MEMORY + header_size + _ndef_size, &tail, sizeof(tail))) {
+        printf("Error while Read bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
+        delegate()->on_size_read(false,0);
+    }
+
+	if(tail == NT3H_NDEF_TAIL) //bigger than 256 bytes.
+	{
+		_user_mem_offset = NTAG_MEM_ADDR_START_USER_MEMORY + header_size;
+	}
+	else
+	{
+		header_size = 2;
+		_ndef_size = (uint16_t)_ndef_header[1];
+
+		if(_current_eeprom_size != _ndef_size)
+		{
+			printf("Read Size is different than current size\n");
+		}
+
+		_user_mem_offset = NTAG_MEM_ADDR_START_USER_MEMORY + header_size;
+
+	}
+
+
+    delegate()->on_size_read(true, _ndef_size);
 }
 
 void NT3HDriver::write_size(size_t count)
 {
-	//printf("%s==>count:%d",__FUNCTION__,count);
+    //printf("%s==>count:%d",__FUNCTION__,count);
     if (count > MAX_USER_MEM_SIZE) {
         delegate()->on_size_written(false);
-    } else {
+    }
+    else {
         _current_eeprom_size = count;
-		uint8_t header_size = 0;
+        uint8_t header_size = 0;
 
-		if(count<0xff)
-		{
-			_ndef_header[1] = count;
-			header_size = 2;
-		}
-		else
-		{
-			uint16_t _ndef_size = (uint16_t)count;
-			uint8_t* bytes = (uint8_t*)&_ndef_size;
-			_ndef_header[1] = bytes[0];
-			_ndef_header[2] = bytes[1];
-			header_size = 3;
-		}
+        if(count<=0xff)
+        {
+            _ndef_header[1] = count;
+            header_size = 2;
+        }
+        else
+        {
+            uint16_t _ndef_size = (uint16_t)count;
+            uint8_t* bytes = (uint8_t*)&_ndef_size;
+            _ndef_header[1] = bytes[0];
+            _ndef_header[2] = bytes[1];
+            header_size = 3;
+        }
 
-		if(NTAG_WriteBytes(_ntag_handle, NTAG_MEM_ADDR_START_USER_MEMORY, _ndef_header, header_size)) {
-	        printf("Error while write bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
-	        delegate()->on_size_written(false);
-	    }
-		_user_mem_offset = NTAG_MEM_ADDR_START_USER_MEMORY + header_size;
+        if(NTAG_WriteBytes(_ntag_handle, NTAG_MEM_ADDR_START_USER_MEMORY, _ndef_header, header_size)) {
+            printf("Error while write bytes! Status:%d\n", NTAG_GetLastError(_ntag_handle));
+            delegate()->on_size_written(false);
+        }
+        _user_mem_offset = NTAG_MEM_ADDR_START_USER_MEMORY + header_size;
 
         delegate()->on_size_written(true);
     }
@@ -548,3 +602,10 @@ void NT3HDriver::erase_bytes(uint32_t address, size_t count)
 }  // namespace vendor
 }// namespace nfc
 }// namespace mbed
+
+
+mbed::nfc::NFCEEPROMDriver* greentea_nfc_EEPROM_driver_get_instance()
+{
+    static mbed::nfc::vendor::NXP::NT3HDriver instance(MBED_CONF_MBED_NFC_NT3H2111_SDA,MBED_CONF_MBED_NFC_NT3H2111_SCL,MBED_CONF_MBED_NFC_NT3H2111_FD);
+    return &instance;
+}
