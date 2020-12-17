@@ -18,7 +18,8 @@
 #include <nt3h_driver.h>
 #include "mbed.h"
 #include "nt3h_defines.h"
-
+#include "rtos/ThisThread.h"
+using namespace std::chrono_literals;
 
 namespace mbed
 {
@@ -106,7 +107,7 @@ bool NTAG_WriteBlock(NTAG_HANDLE_T ntag, uint8_t block, const uint8_t *bytes, ui
 
     /* wait for completion */
     do {
-        wait_us(5000);
+        ThisThread::sleep_for(5ms);
         if (NTAG_ReadRegister(ntag, NTAG_MEM_OFFSET_NS_REG, &ns_reg))
             break;
         timeout--;
@@ -312,7 +313,7 @@ void NT3HDriver:: factory_reset_Tag(void)
     printf("\r\nFactory Reset of Tag memory");
     //SwitchLEDs(REDLED);
     //HAL_Timer_delay_ms(100);
-    wait_us(100000);
+    ThisThread::sleep_for(100ms);
 
     /* reset default eeprom memory values (smart poster) */
     NTAG_WriteBytes(_ntag_handle, NTAG_MEM_ADRR_I2C_ADDRESS, Default_BeginingOfMemory, Default_BeginingOfMemory_length);
@@ -330,7 +331,7 @@ void NT3HDriver:: factory_reset_Tag(void)
 
     //SwitchLEDs(GREENLED);
     //HAL_Timer_delay_ms(100);
-    wait_us(100000);
+    ThisThread::sleep_for(100ms);
 }
 
 
